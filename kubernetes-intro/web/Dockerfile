@@ -4,4 +4,5 @@ WORKDIR /app
 RUN chown -R user:user /app/
 COPY ./config/nginx.conf /etc/nginx/nginx.conf
 
+USER user
 EXPOSE 8000
