@@ -1,14 +1,16 @@
-FROM nginx:alpine
+FROM python:3.8.1-alpine3.11
 
-EXPOSE 8000
+ENV SERVER_PORT 8000
+ENV SERVER_STATIC_CONTENT_DIR "/app/"
 
-COPY ./config/nginx.conf /etc/nginx/nginx.conf
-RUN chown -R 1001 /etc/nginx/
-RUN mkdir -p /run/nginx
+RUN set -x \
+    && mkdir $SERVER_STATIC_CONTENT_DIR \
+    && addgroup -g 1001 -S appgroup \
+    && adduser -S -D -H -u 1001 -s /sbin/nologin -G appgroup -g appuser appuser
 
-USER 1001
+EXPOSE $SERVER_PORT
 
-RUN nginx -t
+USER appuser
 
-CMD ["nginx", "-g", "daemon off;"]
+CMD python -m http.server $SERVER_PORT --directory $SERVER_STATIC_CONTENT_DIR
 
