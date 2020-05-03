@@ -7,7 +7,7 @@ metadata:
 spec:
   containers:
   - name: web
-    image: funkypenguin18/otus-nginx:v.02
+    image: funkypenguin18/otus-nginx:v.03
     volumeMounts:
     - name: app
       mountPath: "/app"
