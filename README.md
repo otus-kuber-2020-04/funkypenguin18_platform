@@ -1,5 +1,14 @@
 # funkypenguin18_platform
 
+# HW 5
+
+### k8s - volumes
+В процессе выполнения ДЗ:
+- Познакомились с StatefulSet
+- Попробовали minio на вкус
+- Попробовали посоздавать k8s secrets (задание с  * )
+
+
 # HW 4
 
 ### k8s - networks
