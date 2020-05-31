@@ -1,5 +1,157 @@
 # funkypenguin18_platform
 
+# HW 6
+
+### k8s - -templating
+
+В процессе выполнения ДЗ:
+
+#### Helm+Ingress
+- установлен Helm
+```bash
+Helm version  
+version.BuildInfo{Version:"v3.2.1", GitCommit:"fe51cd1e31e6a202cba7dead9552a6d418ded79a", GitTreeState:"clean", GoVersion:"go1.13.10"}
+```
+
+- Создан кластер k8s
+```bash
+gcloud beta container --project "sunny-density-278813" clusters create "kuber" --zone "europe-west2-a"
+NAME   LOCATION        MASTER_VERSION  MASTER_IP       MACHINE_TYPE   NODE_VERSION    NUM_NODES  STATUS
+kuber  europe-west2-a  1.14.10-gke.36  34.105.163.194  n1-standard-1  1.14.10-gke.36  3          RUNNING
+```
+и генерируем локальный кубконфиг
+gcloud container clusters get-credentials kuber --zone=europe-west2-a
+
+- Узнаем IP nginx-ingress
+```bash
+kubectl get svc -n nginx-ingress                              
+NAME                            TYPE           CLUSTER-IP      EXTERNAL-IP      PORT(S)                      AGE
+nginx-ingress-controller        LoadBalancer   10.31.253.39    34.105.141.198   80:30170/TCP,443:32081/TCP   149m
+nginx-ingress-default-backend   ClusterIP      10.31.251.190   <none>           80/TCP                       149m
+```
+#### ChartMuseum
+
+и создаём наймспейс chartmuseum + установим chart:
+
+```bash
+kubectl create ns chartmuseum
+namespace/chartmuseum created
+
+helm upgrade --install chartmuseum stable/chartmuseum --wait \
+ --namespace=chartmuseum \
+ --version=2.3.2 \
+ -f kubernetes-templating/chartmuseum/values.yaml
+```
+
+- Проверяем сертификат:
+
+```bash
+curl --insecure -v https://chartmuseum.34.105.141.198.nip.io/  2>&1 | awk 'BEGIN { cert=0 } /^\* Server certificate:/ { cert=1 } /^\*/ { if (cert) print }'
+
+* Server certificate:/ { cert=1 } /^\*/ { if (cert) print }'
+* Server certificate:
+* 	subject: CN=chartmuseum.34.105.141.198.nip.io
+* 	start date: May 31 17:23:32 2020 GMT
+* 	expire date: Aug 29 17:23:32 2020 GMT
+* 	common name: chartmuseum.34.105.141.198.nip.io
+* 	issuer: CN=Let's Encrypt Authority X3,O=Let's Encrypt,C=US
+* Connection #0 to host chartmuseum.34.105.141.198.nip.io left intact
+```
+
+#### Harbor
+Добавление репозитория harbor
+
+helm repo add harbor https://helm.goharbor.io
+
+Создадим неимспейс harbor и применим chart (в этом чарте выключим сервис notary)
+
+kubectl create ns harbor
+helm upgrade --install harbor harbor/harbor --wait \
+--namespace=harbor \
+--version=1.1.2 \
+-f kubernetes-templating/harbor/values.yaml
+
+- Проверяем сертификат:
+```bash
+curl --insecure -v https://harbor.34.105.141.198.xip.io 2>&1 | awk 'BEGIN { cert=0 } /^\* Server certificate:/ { cert=1 } /^\*/ { if (cert) print }'
+* Server certificate:
+* 	subject: CN=harbor.34.105.141.198.xip.io
+* 	start date: May 31 18:23:11 2020 GMT
+* 	expire date: Aug 29 18:23:11 2020 GMT
+* 	common name: harbor.34.105.141.198.xip.io
+* 	issuer: CN=Let's Encrypt Authority X3,O=Let's Encrypt,C=US
+* Connection #0 to host harbor.34.105.141.198.xip.io left intact
+```
+Попробуем создать свой helmchart
+
+```bash
+helm repo add chartmuseum https://chartmuseum.34.105.141.198.nip.io/
+"chartmuseum" has been added to your repositories
+```
+
+### Helmfile | Задание со ⭐
+- Добавлен хелмфайл, все файлы в helmfile/template
+
+#### Создадим свой helm chart:
+
+helm create kubernetes-templating/hipster-shop
+kubectl create ns hipster-shop
+
+##### GPG
+К сожалению в Centos 7 нет возможности выполнить команду gpg --full-generate-key ,
+т.к. нет такой версии гпг, что поддерживает данный ключ.
+также нет никакого вывода хэша по команде gpg -k , однако есть фингерпринт при генерации ключа, с пробелами
+и если их убрать то получается что-то похожее на этот загадочный "хэш".
+
+В результате с его помощью получилось зашифровать secrets.yaml и затем расшифровать его
+```bash
+helm secrets view secrets.yaml
+visibleKey: hiddenValue
+```
+Передадим  в  helm  файл secrets.yaml  какvalues  файл  -  плагин helm-secrets  поймет,  что  его  надо расшифровать, а значение ключа visibleKey  подставить в соответствующий шаблон секрета.
+
+Запустим установку:
+```bash
+helm secrets upgrade --install frontend kubernetes-templating/frontend --namespace hipster-shop -f kubernetes-templating/frontend/values.yaml -f kubernetes-templating/frontend/secrets.yaml
+Release "frontend" does not exist. Installing it now.
+NAME: frontend
+LAST DEPLOYED: Mon Jun  1 01:09:36 2020
+NAMESPACE: hipster-shop
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+removed ‘kubernetes-templating/frontend/secrets.yaml.dec’
+```
+и добавим правило фаервола:
+
+```bash
+gcloud compute firewall-rules create frontend-svc-nodeport-rule --allow=tcp:$(kubectl -n hipster-shop get services frontend -o jsonpath="{.spec.ports[*].nodePort}")
+kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="ExternalIP")].address}'
+```
+
+#### Kubecfg
+
+kubecfg show kubernetes-templating/kubecfg/services.jsonnet
+kubecfg update kubernetes-templating/kubecfg/services.jsonnet --namespace hipster-shop
+
+Kustomize:
+
+Установим kustomize, для кастомизации выбран сервис recommendationservice.
+
+Уберём его описание из all-hipster-shop.yaml и перенесём его в директорию kubernetes-templating/kustomize/recommendation
+
+Проверим что YAML с манифестами генерируется валидным:
+
+kustomize build kubernetes-templating/kustomize/recommendation/
+
+Создадим дирректории kubernetes-templating/kustomize/overriddes/hipster-shop[-prod] и добавим туда файлы с кастомизацией, которые переписывают переменные (такие как labels) для наших манифестов в зависимости от среды и применим их:
+
+```bash
+kubectl apply -k kubernetes-templating/kustomize/overrides/hipster-shop/
+kubectl apply -k kubernetes-templating/kustomize/overrides/hipster-shop-prod/
+
+```
+
 # HW 5
 
 ### k8s - volumes

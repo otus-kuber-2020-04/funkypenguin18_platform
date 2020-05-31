@@ -1,0 +1,4 @@
+helmfiles:
+  - "template/nginx-ingress.yaml"
+  - "template/cert-manager.yaml"
+  - "template/harbor.yaml"
