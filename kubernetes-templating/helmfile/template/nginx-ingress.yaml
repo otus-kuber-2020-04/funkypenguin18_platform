@@ -1,0 +1,14 @@
+repositories:
+  - name: stable
+    url: https://kubernetes-charts.storage.googleapis.com
+releases:
+  - name: nginx-ingress
+    namespace: nginx-ingress
+    chart: stable/nginx-ingress
+    version: 1.11.1
+    wait: true
+    hooks:
+      - events: ["presync"]
+        showlogs: true
+        command: "/bin/sh"
+        args: [ "-c", "kubectl get namespace \"{{`{{ .Release.Namespace }}`}}\" >/dev/null 2>&1 || kubectl create namespace \"{{`{{ .Release.Namespace }}`}}\";" ]
