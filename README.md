@@ -1,4 +1,105 @@
 # funkypenguin18_platform
+# HW 7
+
+### k8s - -operators
+
+- Создан и применен CustomResourceDefinition для mysql оператора в манифесте deploy/crd.yaml
+
+- Создан и применен  CustomResource для mysql оператора в манифесте deploy/cr.yaml
+
+Вопрос с 🐍:
+Почему объект  создался, хотя мы создали  CR до того, как запустили контроллер?
+
+Ответ: Оператор проверяет наличе уже созданных CR. В первую очередь это реализовано для того, чтобы после рестарта или удаления CustomResource оператор мог нормально функционировать. Поэтому объект создался автоматически.
+
+- Собиран и добавлен в репозиторий Docker образ.
+```
+cd build/
+docker build -t funkypenguin18/mysql-operator:1.0 .
+docker push funkypenguin18/mysql-operator:1.0
+```
+- Применим манифесты ( и развернём mysql при помощи оператора+джобы)
+
+```
+kubectl apply -f deploy/service-account.yml
+kubectl apply -f deploy/role.yml
+kubectl apply -f deploy/role-binding.yml
+kubectl apply -f deploy/deploy-operator.yml
+```
+
+- Проверяем работоспособность
+
+```
+kubectl get pvc  
+NAME                        STATUS   VOLUME                     CAPACITY   ACCESS MODES   STORAGECLASS   AGE
+backup-mysql-instance-pvc   Bound    backup-mysql-instance-pv   1Gi        RWO                           9m10s
+mysql-instance-pvc          Bound    mysql-instance-pv          1Gi        RWO                           9m10s
+```
+
+- Нальём данных:
+
+```
+export MYSQLPOD=$(kubectl get pods -l app=mysql-instance -o jsonpath="{.items[*].metadata.name}")
+
+kubectl exec -it $MYSQLPOD -- mysql -u root  -potuspassword -e "CREATE TABLE test ( id smallint unsigned not null auto_increment, name varchar(20) not null, constraint pk_example primary key (id) );" otus-database
+
+kubectl exec -it $MYSQLPOD -- mysql -potuspassword  -e "INSERT INTO test ( id, name )VALUES ( null, 'some data' );" otus-database
+
+kubectl exec -it $MYSQLPOD -- mysql -potuspassword -e "INSERT INTO test ( id, name )VALUES ( null, 'some data-2' );" otus-database
+```
+
+- Посмотрим что в БД:
+
+```
+kubectl exec -it $MYSQLPOD -- mysql -potuspassword -e "select * from test;" otus-database
+mysql: [Warning] Using a password on the command line interface can be insecure.
++----+-------------+
+| id | name        |
++----+-------------+
+|  1 | some data   |
+|  2 | some data-2 |
++----+-------------+
+```
+
+проверим выполнилась ли backup job
+```
+kubectl describe job backup-mysql-instance-job
+
+Events:
+  Type    Reason            Age    From            Message
+  ----    ------            ----   ----            -------
+  Normal  SuccessfulCreate  4m37s  job-controller  Created pod: backup-mysql-instance-job-fddgh
+  Normal  Completed         4m33s  job-controller  Job completed
+```
+
+удалим инстанс
+```
+kubectl delete mysqls.otus.homework mysql-instance
+```
+
+Посмотрим как применится рестор джоба:
+```
+kubectl get jobs -w
+NAME                         COMPLETIONS   DURATION   AGE
+backup-mysql-instance-job    1/1           5s         41s
+restore-mysql-instance-job   0/1           20s        20s
+restore-mysql-instance-job   1/1           25s        25s
+```
+
+А что с данными?
+```
+export MYSQLPOD=$(kubectl get pods -l app=mysql-instance -o jsonpath="{.items[*].metadata.name}")
+export MYSQLPOD=$(kubectl get pods -l app=mysql-instance -o jsonpath="{.items[*].metadata.name}")
+➜  kubernetes-operators git:(kubernetes-operators) ✗ kubectl exec -it $MYSQLPOD -- mysql -potuspassword -e "select * from test;" otus-database
+mysql: [Warning] Using a password on the command line interface can be insecure.
++----+-------------+
+| id | name        |
++----+-------------+
+|  1 | some data   |
+|  2 | some data-2 |
++----+-------------+
+```
+Данные на месте!
 
 # HW 6
 
