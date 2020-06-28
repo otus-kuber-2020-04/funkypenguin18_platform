@@ -1,0 +1,11 @@
+prometheus:
+  prometheusSpec:
+    serviceMonitorSelector: {}
+    serviceMonitorNamespaceSelector: {}
+    serviceMonitorSelectorNilUsesHelmValues: false
+
+prometheusOperator:
+  createCustomResource: false
+
+grafana:
+  adminPassword: OtusPassword!
